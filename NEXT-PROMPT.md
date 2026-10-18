@@ -5,7 +5,8 @@
 
 ## When to fire this
 
-Earliest-useful dates, not deadlines; being late costs nothing (a broken job shows up as a failed Jarvis job and its
+The first three rows run by themselves: Jarvis's hourly `checkups` job (`analyst-first-night` after 2026-10-19 09:30,
+`analyst-sunday` after 2026-10-25 08:15) writes `~/.jarvis/reports/checkups/<id>.md` and alerts on FAIL. Earliest-useful dates, not deadlines; being late costs nothing (a broken job shows up as a failed Jarvis job and its
 alert, and the old Jarvis files are untouched).
 
 | When | Step | Waits on |
