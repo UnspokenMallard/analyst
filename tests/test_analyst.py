@@ -88,6 +88,18 @@ def test_inputs_inlined_not_read():
           all(p.count("DIFF-BODY {x}") == 1 and str(f) not in p for p in (nightly, weekly)))
 
 
+def test_jobs_start_no_mcp_servers():
+    from analyst import common
+    seen = {}
+    real = common.gateway.run_agent
+    common.gateway.run_agent = lambda *a, **k: seen.update(k) or {"code": 0}
+    try:
+        common.run_claude_job("p", TMP / "l.log", "j", "Read", 1.0)
+    finally:
+        common.gateway.run_agent = real
+    check("jobs: claude starts with --strict-mcp-config", seen.get("flags") == ["--strict-mcp-config"], str(seen.get("flags")))
+
+
 def test_cli():
     check("cli: an unknown job is refused with exit 2", cli.main(["nope"]) == 2)
 

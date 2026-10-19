@@ -133,6 +133,11 @@ def inline_input(text: str, label: str) -> str:
     return f"<input name=\"{label}\">\n{text}\n</input>"
 
 
+# No MCP servers: their ~295 tool schemas are ~300k tokens before turn 1 (measured 2026-10-19), more
+# than hud-audit's whole $1 cap. Analyst jobs only use built-in tools.
+JOB_FLAGS = ["--strict-mcp-config"]
+
+
 def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budget_usd: float,
                    allow: list[str] | None = None, max_attempts: int = 3, backoff_s: int = 120,
                    scope: str = "personal", cwd: Path | None = None, optional: bool = False,
@@ -141,7 +146,7 @@ def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budge
     ~/.jarvis, where the jobs always ran (the Claude config and its permissions resolve from it)."""
     out = gateway.run_agent(job_name, gateway.agent.stamp(prompt), tools, allow, budget_usd, scope=scope,
                             cwd=cwd or JARVIS, optional=optional, log_file=log_file, surface=surface,
-                            max_attempts=max_attempts, backoff_s=backoff_s)
+                            max_attempts=max_attempts, backoff_s=backoff_s, flags=JOB_FLAGS)
     return int(out["code"]) if out["code"] is not None else 1
 
 
