@@ -79,6 +79,15 @@ def test_portfolio_merge():
           "1. **W.**" in out and "2. **P.**" in out and "## personal/cmdpeek" in out and "- q2" in out, out)
 
 
+def test_inputs_inlined_not_read():
+    f = TMP / "in.txt"
+    f.write_text("DIFF-BODY {x}", encoding="utf-8")
+    nightly = hud_audit.nightly_prompt("r", TMP, "a..b", f, TMP / "o.json", False)
+    weekly = hud_audit.weekly_prompt("r", TMP, f, TMP / "o.json")
+    check("hud-audit: the input is in the prompt once and its path is not",
+          all(p.count("DIFF-BODY {x}") == 1 and str(f) not in p for p in (nightly, weekly)))
+
+
 def test_cli():
     check("cli: an unknown job is refused with exit 2", cli.main(["nope"]) == 2)
 

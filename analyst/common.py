@@ -127,6 +127,12 @@ def job_budget(scope: str, optional: bool = False) -> tuple[int, str]:
     return b.returncode, (b.stdout + b.stderr).strip().replace("\n", " ")
 
 
+def inline_input(text: str, label: str) -> str:
+    """A job's input as a prompt block. The model gets it once here and has no Read rule for it, so
+    it cannot re-read it (a 80k-token digest was read nine times in one week)."""
+    return f"<input name=\"{label}\">\n{text}\n</input>"
+
+
 def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budget_usd: float,
                    allow: list[str] | None = None, max_attempts: int = 3, backoff_s: int = 120,
                    scope: str = "personal", cwd: Path | None = None, optional: bool = False,

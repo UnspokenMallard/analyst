@@ -22,10 +22,8 @@ Monday morning. Do NOT ask any clarifying questions - there is nobody to answer
 them. If a choice arises, take the most conservative option that still finishes
 the report.
 
-The week's raw activity has already been collected for you at:
-  {digest}
-
-Read that file. It holds, for the last 7 days: commits per Event Registry repo
+The week's raw activity has already been collected for you and is in the <input> block at
+the end of this prompt. It is already in your context: do NOT Read it again. It holds, for the last 7 days: commits per Event Registry repo
 (with author), pull requests he opened or reviewed, the Claude Code sessions he
 drove, and any Jarvis queue work the Claude implementer did. Do NOT go looking for repositories,
 transcripts or git history yourself - the digest is the input, and you have no
@@ -61,6 +59,8 @@ What the report is and is not:
 You MUST call the Write tool to create the file. A chat answer instead of the
 file is a failed run even if the exit code is 0. If you cannot finish, say why in
 one line beginning with FAILED so the log is greppable.
+
+{digest_text}
 """
 
 
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     out = store.report_dir(REPORT_NAME) / f"{today}.md"
     last = store.latest(REPORT_NAME)
     previous = (f"Last week's report, {last}, shows the format; match it." if last.exists() else "")
-    prompt = PROMPT.format(digest=DIGEST, out=out, today=today, previous=previous)
+    prompt = PROMPT.format(digest_text=jc.inline_input(DIGEST.read_text(encoding="utf-8"), "week-activity digest"), out=out, today=today, previous=previous)
     if not jc.wait_for_api(job.log):
         return 1
     with jc.job_lock("weekly-activity", job.log) as held:
@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         code = jc.run_claude_job(
             prompt, job.log, "weekly-activity", budget_usd=1.00, tools="Read,Write,Edit",
-            allow=[f"Read({jc.rule_path(DIGEST)})", f"Read({jc.rule_path(last)})", f"Read({jc.rule_path(out)})",
+            allow=[f"Read({jc.rule_path(last)})", f"Read({jc.rule_path(out)})",
                    f"Write({jc.rule_path(out)})", f"Edit({jc.rule_path(out)})"])
     if job.assert_artifact(out, code, what=f"week-activity/{out.name}") != 0:
         return 1
