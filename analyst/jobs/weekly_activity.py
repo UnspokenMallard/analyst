@@ -2,8 +2,8 @@
 
 collect_week_activity gathers the week read-only; one tool-limited `claude -p` turns it into the
 "Last week:" bullets in state/reports/week-activity/<date>.md (+ latest.md). Jarvis's
-weekly-activity-post (~/.jarvis/scripts/post-weekly-activity.py) puts that text into Notion under
-Daily Notes and adds it to the index. Analyst never posts.
+weekly-activity-post (~/.jarvis/scripts/post-weekly-activity.py) puts that text into the Notes vault under
+Work/Daily Notes and adds it to the index. Analyst never posts.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ transcripts or git history yourself - the digest is the input, and you have no
 shell.
 
 Write the report with the Write tool to {out}, OVERWRITING any previous version.
-Another program posts that file's text unchanged into Notion as the page {today},
+Another program posts that file's text unchanged into the Notes vault as the note {today},
 so the file holds the page body and nothing else: a line reading "Last week:"
 followed by a flat list of short bullets, each one a theme in plain language -
 "Login security: failed logins get the same message at a fixed deadline" - not
