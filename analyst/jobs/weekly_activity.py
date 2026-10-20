@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         if not held:
             return 1
         code = jc.run_claude_job(
-            prompt, job.log, "weekly-activity", budget_usd=1.00, tools="Read,Write,Edit",
+            prompt, job.log, "weekly-activity", budget_usd=1.00, tools="Read,Write,Edit", scope="work",
             allow=[f"Read({jc.rule_path(last)})", f"Read({jc.rule_path(out)})",
                    f"Write({jc.rule_path(out)})", f"Edit({jc.rule_path(out)})"])
     if job.assert_artifact(out, code, what=f"week-activity/{out.name}") != 0:
