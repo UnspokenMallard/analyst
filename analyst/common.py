@@ -56,12 +56,25 @@ def rule_path(path: Path | str) -> str:
     return "/" + p if p.startswith("/") and not p.startswith("//") else p
 
 
+WEDGE_WARN_MIN = 120  # a holder this old is wedged, not busy: nightly jobs run for minutes
+
+
+def holder_age_min(holder: str) -> float | None:
+    """Minutes since the lock holder wrote `acquired=<iso>`, or None when the lock file does not say."""
+    if "acquired=" not in holder:
+        return None
+    try:
+        return (datetime.now() - datetime.fromisoformat(holder.split("acquired=", 1)[1].split()[0])).total_seconds() / 60
+    except ValueError:
+        return None
+
+
 @contextlib.contextmanager
 def job_lock(job_name: str, log_file: Path, max_wait_min: int = 45, interval_s: int = 30):
     """Yields True with the lock held, or False after max_wait_min (caller exits 1)."""
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.time() + max_wait_min * 60
-    attempt, waited, fh = 0, False, None
+    attempt, waited, warned, fh = 0, False, False, None
     while time.time() < deadline:
         attempt += 1
         fh = open(LOCK_PATH, "a+")
@@ -76,6 +89,11 @@ def job_lock(job_name: str, log_file: Path, max_wait_min: int = 45, interval_s: 
                 log_line(log_file, f"another nightly job is running{f' (held by: {holder})' if holder else ''}"
                                    f" - waiting up to {max_wait_min} min")
                 waited = True
+            age = holder_age_min(holder)
+            if age is not None and age > WEDGE_WARN_MIN and not warned:
+                log_line(log_file, f"nightly job lock held {age:.0f} min by {holder.split(' pid=')[0]} - "
+                                   "probably wedged; it needs a look (this job keeps waiting)")
+                warned = True
             time.sleep(interval_s)
             continue
         fh.seek(0)
@@ -133,11 +151,6 @@ def inline_input(text: str, label: str) -> str:
     return f"<input name=\"{label}\">\n{text}\n</input>"
 
 
-# No MCP servers: their ~295 tool schemas are ~300k tokens before turn 1 (measured 2026-10-19), more
-# than hud-audit's whole $1 cap. Analyst jobs only use built-in tools.
-JOB_FLAGS = ["--strict-mcp-config"]
-
-
 def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budget_usd: float,
                    allow: list[str] | None = None, max_attempts: int = 3, backoff_s: int = 120,
                    scope: str = "personal", cwd: Path | None = None, optional: bool = False,
@@ -146,7 +159,7 @@ def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budge
     ~/.jarvis, where the jobs always ran (the Claude config and its permissions resolve from it)."""
     out = gateway.run_agent(job_name, gateway.agent.stamp(prompt), tools, allow, budget_usd, scope=scope,
                             cwd=cwd or JARVIS, optional=optional, log_file=log_file, surface=surface,
-                            max_attempts=max_attempts, backoff_s=backoff_s, flags=JOB_FLAGS)
+                            max_attempts=max_attempts, backoff_s=backoff_s)
     return int(out["code"]) if out["code"] is not None else 1
 
 
