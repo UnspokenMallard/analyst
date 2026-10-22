@@ -97,7 +97,10 @@ def test_jobs_start_no_mcp_servers():
         common.run_claude_job("p", TMP / "l.log", "j", "Read", 1.0)
     finally:
         common.gateway.run_agent = real
-    check("jobs: claude starts with --strict-mcp-config", seen.get("flags") == ["--strict-mcp-config"], str(seen.get("flags")))
+    # The flag lives in Gateway only: analyst passes none, and the command Gateway builds still carries it once.
+    args = common.gateway.agent.command("claude", "sonnet", "s1", "Read", None, 1.0)
+    check("jobs: claude starts with --strict-mcp-config",
+          not seen.get("flags") and args.count("--strict-mcp-config") == 1, f"{seen.get('flags')} {args}")
 
 
 def test_cli():
