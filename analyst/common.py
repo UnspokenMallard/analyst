@@ -157,7 +157,7 @@ def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budge
                    surface: str | None = None) -> int:
     """Exit code of the last attempt; the caller still asserts its artifact. `cwd` defaults to
     ~/.jarvis, where the jobs always ran (the Claude config and its permissions resolve from it)."""
-    out = gateway.run_agent(job_name, gateway.agent.stamp(prompt), tools, allow, budget_usd, scope=scope,
+    out = gateway.run_agent(job_name, gateway.agent.stamp(prompt, "Odin (Analyst): weighty, ends with a verdict"), tools, allow, budget_usd, scope=scope,
                             cwd=cwd or JARVIS, optional=optional, log_file=log_file, surface=surface,
                             max_attempts=max_attempts, backoff_s=backoff_s)
     return int(out["code"]) if out["code"] is not None else 1
