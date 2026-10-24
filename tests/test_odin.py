@@ -180,6 +180,35 @@ def test_jobs_read_mimir():
         job_review.CONFIG, job_review.VIEWS = real
 
 
+def test_job_review_proposes_branch():
+    import subprocess
+    from odin.jobs import job_review
+    repo = TMP / "jr-repo"
+    subprocess.run(["git", "init", "-q", "-b", "master", str(repo)], check=True)
+    (repo / "config.toml").write_text('[[jobs]]\nname = "a"\nenabled = true\n\n[[jobs]]\nname = "b"\nenabled = true\n')
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(git + ["add", "config.toml"], check=True)
+    subprocess.run(git + ["commit", "-q", "-m", "init"], check=True)
+    real = job_review.JARVIS
+    job_review.JARVIS = repo
+    os.environ.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+    try:
+        branch = job_review.propose_branch("b")
+        again = job_review.propose_branch("b")
+        missing = job_review.propose_branch("nope")
+    finally:
+        job_review.JARVIS = real
+    shown = subprocess.run(git + ["show", f"{branch}:config.toml"], capture_output=True, text=True).stdout
+    check("job-review: a flagged job gets a branch that disables only it, reused on a rerun",
+          branch == again == "proposal/job-review-b" and shown.endswith('name = "b"\nenabled = false\n')
+          and 'name = "a"\nenabled = true' in shown and missing is None, shown)
+    check("job-review: master and the live checkout are untouched",
+          "enabled = false" not in (repo / "config.toml").read_text()
+          and subprocess.run(git + ["worktree", "list"], capture_output=True, text=True).stdout.count("\n") == 1)
+    p = job_review.as_proposal(job_review.finding_for("b", {"acceptance": 0, "raised": 1, "resolved": 0, "dismissed": 1, "ignored": 0}, 3, 30), "b", branch)
+    check("job-review: the proposal is on the jarvis project with its branch", p["kind"] == "proposal" and p["project"] == "jarvis" and p["branch"] == branch)
+
+
 def test_cli():
     check("cli: an unknown job is refused with exit 2", cli.main(["nope"]) == 2)
     from odin._mimir import records as mr

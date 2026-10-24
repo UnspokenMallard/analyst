@@ -13,6 +13,11 @@ findings above, or how often Anze opened the report it pushes (the HUD's report-
 A job whose pushed report nobody opened in the window, while it spent at least MIN_UNREAD_USD, is flagged
 the same way. Reads are only counted from READS_SINCE, when the HUD started recording them.
 
+A flagged job is proposed, not changed (audit A33, 2026-10-25): job-review commits `enabled = false` for it
+to a local branch proposal/job-review-<job> in ~/.jarvis, cut from master in a throwaway worktree, and files
+the finding as a HUD proposal on that branch. It never pushes, merges or edits the live config; Accept in the
+HUD opens a chat on the branch. A branch that already exists is reused, so a rerun commits nothing new.
+
 Read-only for the daemon's state: it edits no config and pauses nothing.
 Usage: analyst job-review [--days N] [--dry-run]
 """
@@ -21,9 +26,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import subprocess
+import tempfile
 import time
 import tomllib
 from datetime import datetime, timezone
+from pathlib import Path
 
 from .. import store
 from .._mimir import records as mr
@@ -147,6 +156,7 @@ def finding_for(job: str, o: dict, usd: float, days: int) -> dict:
         "project": "claude-config",
         "severity": "low",
         "kind": "job-value",
+        "job": job,
         "title": f"Job [{job}] has {o['acceptance']}% of its findings accepted over {days} days (${usd}).",
         "file": "config.toml",
         "line": 0,
@@ -159,6 +169,53 @@ def finding_for(job: str, o: dict, usd: float, days: int) -> dict:
         "foundAt": now,
         "lastSeen": now,
     }
+
+
+def disable_edit(text: str, job: str) -> str | None:
+    """config.toml with the job's `enabled = true` set to false; None when the job has no such line."""
+    blocks = re.split(r"(?m)^(?=\[\[jobs\]\])", text)
+    for i, block in enumerate(blocks):
+        if re.search(rf'(?m)^name = "{re.escape(job)}"$', block):
+            new = re.sub(r"(?m)^enabled = true$", "enabled = false", block, count=1)
+            if new == block:
+                return None
+            blocks[i] = new
+            return "".join(blocks)
+    return None
+
+
+def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(cwd or JARVIS), *args], capture_output=True, text=True, timeout=60)
+
+
+def propose_branch(job: str) -> str | None:
+    """The local branch that disables `job` in config.toml, made once from master; None when it cannot be made."""
+    branch = f"proposal/job-review-{job}"
+    if _git("rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode == 0:
+        return branch
+    shown = _git("show", "master:config.toml")
+    new = disable_edit(shown.stdout, job) if shown.returncode == 0 else None
+    if new is None:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        wt = Path(tmp) / "wt"
+        if _git("worktree", "add", "-q", "-b", branch, str(wt), "master").returncode != 0:
+            return None
+        try:
+            (wt / "config.toml").write_text(new, encoding="utf-8")
+            ok = _git("commit", "-q", "-m", f"Disable the {job} job, which job-review flagged", "--", "config.toml", cwd=wt).returncode == 0
+        finally:
+            _git("worktree", "remove", "--force", str(wt))
+    if not ok:
+        _git("branch", "-D", branch)  # only the branch this call just made
+        return None
+    return branch
+
+
+def as_proposal(f: dict, job: str, branch: str) -> dict:
+    return {**f, "kind": "proposal", "project": "jarvis", "branch": branch, "why": f["title"], "confidence": 0.6,
+            "detail": f"Sets enabled = false for [{job}] in config.toml. {f['detail']}",
+            "notChecked": ["whether another job or report depends on this one"]}
 
 
 def write_findings(new: list[dict]) -> list[str]:
@@ -215,6 +272,9 @@ def main(argv: list[str] | None = None) -> int:
     print("\n".join(lines))
     added: list[str] = []
     if not args.dry_run:
+        for i, f in enumerate(flagged):
+            if branch := propose_branch(f["job"]):
+                flagged[i] = as_proposal(f, f["job"], branch)
         added = write_findings(flagged)
         store.write_report(REPORT_NAME, "\n".join(lines) + "\n")
         ARTIFACT.write_text(json.dumps({"at": now, "jobs": len(rows), "flagged": [f["id"] for f in flagged], "findings_added": added}) + "\n", encoding="utf-8")
