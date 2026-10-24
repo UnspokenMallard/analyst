@@ -16,16 +16,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sqlite3
 import time
 import tomllib
 from datetime import datetime, timezone
-from pathlib import Path
 
 from .. import store
+from .._mimir import records as mr
 
 JARVIS = store.JARVIS
-DB = Path.home() / ".budget" / "state" / "budget.db"  # job_calls, in Fafnir since 2026-10-17
 FINDINGS = store.FINDINGS  # read only: the outcomes of each job's filed findings
 REPORT_NAME = "job-review"
 ARTIFACT = store.STATE / "job-review.json"
@@ -79,9 +77,10 @@ def paused_jobs(now: float) -> set[str]:
     return out
 
 
-def spend(conn: sqlite3.Connection, job: str, since: float) -> float:
-    row = conn.execute("SELECT COALESCE(SUM(cost_usd), 0) FROM job_calls WHERE job = ? AND ts >= ?", (job, since)).fetchone()
-    return round(row[0] or 0, 2)
+def spend(job: str, since: float) -> float:
+    """Fafnir's recorded cost of the job's runs (its `fafnir.job_call` stream in Mimir)."""
+    total = mr.agg("sum", stream="fafnir.job_call", field="cost_usd", where="job:" + json.dumps(job), since=since, source="fafnir")
+    return round(total or 0, 2)
 
 
 def finding_for(job: str, o: dict, usd: float, days: int) -> dict:
@@ -124,14 +123,13 @@ def main(argv: list[str] | None = None) -> int:
         findings = []
     rows, flagged = [], []
     held = paused_jobs(now)
-    with sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30) as conn:
-        for job, source in job_sources().items():
-            o, usd = outcomes(findings, source, since, now), spend(conn, job, since)
-            rows.append((job, usd, o))
-            if job in held:
-                continue
-            if o["decided"] >= MIN_DECIDED and o["acceptance"] is not None and o["acceptance"] < MAX_ACCEPT:
-                flagged.append(finding_for(job, o, usd, args.days))
+    for job, source in job_sources().items():
+        o, usd = outcomes(findings, source, since, now), spend(job, since)
+        rows.append((job, usd, o))
+        if job in held:
+            continue
+        if o["decided"] >= MIN_DECIDED and o["acceptance"] is not None and o["acceptance"] < MAX_ACCEPT:
+            flagged.append(finding_for(job, o, usd, args.days))
 
     lines = [f"# Job review ({datetime.now():%Y-%m-%d})", "",
              f"Window {args.days} days. Flag: at least {MIN_DECIDED} decided-or-ignored findings and acceptance under {MAX_ACCEPT}%.", "",
