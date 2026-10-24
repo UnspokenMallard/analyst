@@ -81,6 +81,19 @@ def test_portfolio_merge():
           "1. **W.**" in out and "2. **P.**" in out and "## personal/cmdpeek" in out and "- q2" in out, out)
 
 
+def test_audit_prompt_cites_decisions():
+    store.FINDINGS.write_text(json.dumps({"findings": [
+        {"id": "r", "source": "nightly", "project": "er-api", "title": "Rate limit missing", "status": "dismissed",
+         "dismissedAt": "2026-10-20T10:00:00Z", "dismissReason": "internal only"},
+        {"id": "m", "source": "weekly", "project": "er-web", "title": "XSS in preview", "status": "resolved",
+         "resolvedBy": "merged abc", "resolvedAt": "2026-10-21T10:00:00Z"},
+        {"id": "o", "source": "remedy", "title": "not an audit", "status": "dismissed", "dismissReason": "x"}]}))
+    text = hud_audit.past_decisions()
+    check("hud-audit: the prompt cites rejects with the reason and recent accepts, only audit findings (A16)",
+          "rejected: [er-api] Rate limit missing - his reason: internal only" in text
+          and "accepted: [er-web] XSS in preview" in text and "not an audit" not in text, text)
+
+
 def test_inputs_inlined_not_read():
     f = TMP / "in.txt"
     f.write_text("DIFF-BODY {x}", encoding="utf-8")
