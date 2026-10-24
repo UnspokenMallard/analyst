@@ -71,7 +71,9 @@ FORMAT = """Write {out} with the Write tool, as one JSON object and nothing else
 Write {{"findings": []}} when there is nothing worth Anze's time. Only real, specific problems you can point at in the code:
 no style nits, no "consider adding tests", no speculation you did not check against the code. Severity: critical = exploitable
 now or data loss; high = a security hole or a bug users will hit; medium = a real defect with limited reach; low = worth a line.
-You MUST call Write even when there are no findings; a chat answer instead of the file is a failed run."""
+You MUST call Write even when there are no findings; a chat answer instead of the file is a failed run.
+Write the file FIRST, before any Read or Grep, with what the diff alone shows (or {{"findings": []}}), then rewrite it as you
+check: the run has a fixed budget, and a run cut off by it keeps the file as it stood."""
 
 
 RECENT_DECISIONS, MAX_REJECTS = 20, 30
@@ -235,9 +237,11 @@ def run_model(job: jc.Job, name: str, repo: Path, mode: str, prompt: str, inp: P
         allow=[f"Read({rp}/**)", f"Grep({rp}/**)", f"Glob({rp}/**)", "Grep", "Glob",
                f"Edit({jc.rule_path(out)})", f"Write({jc.rule_path(out)})", f"Read({jc.rule_path(out)})"])
     data = load(out, None)
-    if code != 0 or not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+    if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
         job.say(f"{name}: no usable findings file (exit {code})")
         return None
+    if code != 0:  # cut off, usually by the budget cap (audit A30): keep what it wrote, so the range is not rerun forever
+        job.say(f"{name}: partial findings, the run stopped early (exit {code})")
     return data["findings"]
 
 

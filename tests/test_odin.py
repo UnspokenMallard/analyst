@@ -103,6 +103,19 @@ def test_inputs_inlined_not_read():
           all(p.count("DIFF-BODY {x}") == 1 and str(f) not in p for p in (nightly, weekly)))
 
 
+def test_audit_keeps_partial_findings():
+    from odin import common
+    out = TMP / "partial.json"
+    real = common.run_claude_job
+    common.run_claude_job = lambda *a, **k: out.write_text('{"findings": [{"title": "x"}]}') and 1
+    try:
+        job = common.Job("hud-audit-test", "test")
+        found = hud_audit.run_model(job, "r", TMP, "nightly", "p", TMP / "in.txt", out)
+    finally:
+        common.run_claude_job = real
+    check("hud-audit: a run cut off by its budget keeps the findings it wrote", found == [{"title": "x"}])
+
+
 def test_jobs_start_no_mcp_servers():
     from odin import common
     seen = {}
