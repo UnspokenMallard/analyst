@@ -48,8 +48,12 @@ covers these rows too. The rule stays: this component measures or knows; Jarvis 
   Sentinel, token-report and usage-digest to Budget.
 - **A42 (Phase 4)** `odin/common.py` (176 lines) duplicates `~/.jarvis/scripts/jobcommon.py`.
 
+**Status 2026-10-25 (HUD task freyr-398c, merge with Jarvis):** A30 (e83b676), A32 (42bb751), A33 (a99a680) and the audit-prompt feedback (b3fac07, c2956fa) are built. A34's read signal is the HUD's `state/hud/report-views.jsonl` (Jarvis 1866678). A33 makes local `proposal/job-review-<job>` branches in `~/.jarvis` and never pushes (Anze approved 10-25). A37: weekly-activity is back on Sonnet (Gateway a6ceb4f). A38: dep-rehearsal and commit-audit are Sentinel's, token-report and usage-digest are Budget's; issue-triage to Forge is its own HUD task. A42 is planned, not built.
+
 | When (earliest useful, not a deadline) | Step | Waits on |
 |---|---|---|
+| 2026-11-24 or later | the first unread-report flag in job-review and its `proposal/job-review-<job>` branch in the HUD inbox (reads count from 10-25, the window is 30 days) | 30 days of reads |
+| first night after the freyr-398c merge | a budget-capped hud-audit-nightly run keeps its findings (A30) | the merge |
 | with Phase 3 | A30, A32, A34, then A33, then the A38 moves one at a time | Phase 3 approval |
 | 2026-10-26 after 08:45 | A37: did weekly-activity-post write its note this week | the weekly run |
 
