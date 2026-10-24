@@ -8,6 +8,11 @@ MIN_DECIDED decided-or-ignored findings and acceptance below MAX_ACCEPT percent 
 HUD finding on project claude-config proposing to pause or retune it. The finding id comes from
 the job name, so a dismissed one stays dismissed. The report is Odin's state/reports/job-review/latest.md.
 
+Every other LLM job with recorded spend (audit A32, 2026-10-24) is listed with its output signal: the
+findings above, or how often Anze opened the report it pushes (the HUD's report-views.jsonl, audit A34).
+A job whose pushed report nobody opened in the window, while it spent at least MIN_UNREAD_USD, is flagged
+the same way. Reads are only counted from READS_SINCE, when the HUD started recording them.
+
 Read-only for the daemon's state: it edits no config and pauses nothing.
 Usage: analyst job-review [--days N] [--dry-run]
 """
@@ -31,12 +36,64 @@ CONFIG = JARVIS / "config.toml"
 IGNORED_DAYS = 14
 MIN_DECIDED = 5
 MAX_ACCEPT = 10
+VIEWS = JARVIS / "state" / "hud" / "report-views.jsonl"
+READS_SINCE = datetime(2026, 10, 25, tzinfo=timezone.utc).timestamp()
+MIN_UNREAD_USD = 2.0
 
 
 def job_sources() -> dict[str, str]:
     """Job name -> finding source, from [job_findings] in config.toml (also read by hud/lib/jobvalue.js)."""
     with CONFIG.open("rb") as f:
         return tomllib.load(f).get("job_findings", {})
+
+
+def pushed_reports(jobs: list[str]) -> dict[str, str]:
+    """Job name -> the report file a report-push job sends for it."""
+    with CONFIG.open("rb") as f:
+        cfg = tomllib.load(f)
+    paths = [r["path"] for j in cfg.get("jobs", []) if j.get("kind") == "report-push"
+             for r in (j.get("payload") or {}).get("reports", []) if r.get("path")]
+    out = {}
+    # shortcut: a report belongs to the longest job name in its path; name a job in the payload if one ever misfiles.
+    for p in paths:
+        owner = max((j for j in jobs if j in p), key=len, default=None)
+        if owner:
+            out[owner] = p
+    return out
+
+
+def report_reads(since: float) -> dict[str, int]:
+    """Report path -> times Anze opened it from its notification in the window."""
+    reads: dict[str, int] = {}
+    try:
+        lines = VIEWS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return reads
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if parse_ts(d.get("at", "")) >= since:
+            reads[d.get("path", "")] = reads.get(d.get("path", ""), 0) + 1
+    return reads
+
+
+def all_spend(since: float) -> dict[str, float]:
+    """Job -> Fafnir's recorded cost over the window, for every job that has one."""
+    groups = mr.agg("sum", stream="fafnir.job_call", field="cost_usd", by="job", since=since, source="fafnir") or {}
+    return {job: round(usd or 0, 2) for job, usd in groups.items()}
+
+
+def unread_finding(job: str, report: str, usd: float, days: int) -> dict:
+    f = finding_for(job, {"acceptance": 0, "raised": 0, "resolved": 0, "dismissed": 0, "ignored": 0}, usd, days)
+    f.update(id="jobvalue-unread-" + hashlib.sha1(job.encode()).hexdigest()[:10],
+             title=f"Job [{job}] spent ${usd} over {days} days on a report nobody opened.",
+             detail=f"Its report {report} was pushed to the phone and never opened from the notification in the window. "
+                    "See ~/.analyst/state/reports/job-review/latest.md.",
+             suggestion="Pick one: stop pushing the report, pause the job, or lengthen its schedule. "
+                        "The job is not changed automatically.")
+    return f
 
 
 def parse_ts(s: str) -> float:
@@ -131,6 +188,20 @@ def main(argv: list[str] | None = None) -> int:
         if o["decided"] >= MIN_DECIDED and o["acceptance"] is not None and o["acceptance"] < MAX_ACCEPT:
             flagged.append(finding_for(job, o, usd, args.days))
 
+    spent = all_spend(since)
+    reports = pushed_reports(list(spent))
+    reads = report_reads(since)
+    covered = since >= READS_SINCE
+    others = []
+    for job in sorted(set(spent) - set(job_sources()), key=lambda j: -spent[j]):
+        rep = reports.get(job)
+        signal = f"report opened {reads.get(rep, 0)}x" if rep else "no output signal"
+        if rep and not covered:
+            signal += " (reads counted from 2026-10-25)"
+        others.append((job, spent[job], signal))
+        if rep and covered and job not in held and not reads.get(rep) and spent[job] >= MIN_UNREAD_USD:
+            flagged.append(unread_finding(job, rep, spent[job], args.days))
+
     lines = [f"# Job review ({datetime.now():%Y-%m-%d})", "",
              f"Window {args.days} days. Flag: at least {MIN_DECIDED} decided-or-ignored findings and acceptance under {MAX_ACCEPT}%.", "",
              "| job | spend | raised | resolved | dismissed | ignored | acceptance |", "|---|---|---|---|---|---|---|"]
@@ -139,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         if job in held:
             acc += " (paused, not flagged)"
         lines.append(f"| {job} | ${usd} | {o['raised']} | {o['resolved']} | {o['dismissed']} | {o['ignored']} | {acc} |")
+    lines += ["", "Every other LLM job with recorded spend:", "", "| job | spend | output |", "|---|---|---|"]
+    lines += [f"| {job} | ${usd} | {signal} |" for job, usd, signal in others]
     print("\n".join(lines))
     added: list[str] = []
     if not args.dry_run:

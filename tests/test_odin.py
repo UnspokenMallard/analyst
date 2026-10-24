@@ -164,6 +164,20 @@ def test_jobs_read_mimir():
     mr.append("fafnir", "fafnir.job_call", {"job": "j", "cost_usd": None}, at=now - 20)
     mr.append("fafnir", "fafnir.job_call", {"job": "other", "cost_usd": 7}, at=now - 30)
     check("job-review: spend sums one job's recorded cost", job_review.spend("j", now - 86400) == 1.5)
+    check("job-review: every job's spend in one grouped query", job_review.all_spend(now - 86400) == {"j": 1.5, "other": 7})
+    cfg, views = TMP / "jr-config.toml", TMP / "jr-views.jsonl"
+    cfg.write_text('[[jobs]]\nkind = "report-push"\npayload = { reports = [ { path = "/r/weekly-introspect/latest.md" } ] }\n')
+    views.write_text(json.dumps({"path": "/r/weekly-introspect/latest.md", "at": "2026-10-26T08:00:00Z"}) + "\nbad\n")
+    real = job_review.CONFIG, job_review.VIEWS
+    job_review.CONFIG, job_review.VIEWS = cfg, views
+    try:
+        check("job-review: a pushed report maps to the longest job name in its path",
+              job_review.pushed_reports(["weekly", "weekly-introspect"]) == {"weekly-introspect": "/r/weekly-introspect/latest.md"})
+        check("job-review: report reads are counted inside the window only",
+              job_review.report_reads(job_review.parse_ts("2026-10-25T00:00:00Z")) == {"/r/weekly-introspect/latest.md": 1}
+              and job_review.report_reads(job_review.parse_ts("2026-10-27T00:00:00Z")) == {})
+    finally:
+        job_review.CONFIG, job_review.VIEWS = real
 
 
 def test_cli():
