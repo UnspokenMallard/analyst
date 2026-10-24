@@ -4,7 +4,7 @@ Anze, 2026-10-15: Jarvis should stop paging him about things nobody acts on. The
 week before, 112 alert writes came from 16 keys and one key (burn:repeat:script)
 was 64 of them. Nothing measured that.
 
-For each key written to alerts.log in the window (alert_writes), it counts the
+For each key written to alerts.log in the window (Jarvis's alert-write records in Mimir), it counts the
 writes and looks for any sign Anze engaged:
   - an incident holding the key was resolved by him (resolved_by = 'human'),
   - he pressed Diagnose on such an incident (HUD events.jsonl),
@@ -25,7 +25,6 @@ import argparse
 import hashlib
 import json
 import re
-import sqlite3
 import sys
 import time
 from datetime import datetime, timezone
@@ -34,26 +33,27 @@ from pathlib import Path
 from .. import store
 
 JARVIS = store.JARVIS
-DB = JARVIS / "jarvis.db"
 EVENTS = JARVIS / "state" / "hud" / "events.jsonl"
 POSTPONED = JARVIS / "state" / "postponed.json"
 REPORT_NAME = "alert-review"
 ARTIFACT = store.STATE / "alert-review.json"
 sys.path.insert(0, str(Path.home() / ".sentinel"))
-from heimdall import store as heimdall_store  # noqa: E402  incidents live in Heimdall's db
+from heimdall import incidents as heimdall_incidents  # noqa: E402  incidents are Heimdall's Mimir records
+
+from .._mimir import records as mr  # noqa: E402
 
 MIN_WRITES = 5
 STILL_DAYS = 3
 DIAGNOSE_RE = re.compile(r"^incidents/(\d+)/diagnose$")
 
 
-def writes_per_key(conn: sqlite3.Connection, since: float) -> dict[str, dict]:
-    rows = conn.execute(
-        "SELECT key, severity, COUNT(*), MIN(ts), MAX(ts) FROM alert_writes "
-        "WHERE ts >= ? GROUP BY key",
-        (since,),
-    ).fetchall()
-    return {k: {"severity": sev, "writes": n, "first": a, "last": b} for k, sev, n, a, b in rows}
+def writes_per_key(since: float) -> dict[str, dict]:
+    # shortcut: one query, capped at Mimir's 5000 rows; a fortnight is ~200, page it if that ever changes.
+    out: dict[str, dict] = {}
+    for r in mr.query(stream="jarvis.alert_writes", since=since, limit=5000, order="asc", source="jarvis"):
+        info = out.setdefault(r["data"]["key"], {"severity": None, "writes": 0, "first": r["at"], "last": r["at"]})
+        info.update(severity=r["data"].get("severity"), writes=info["writes"] + 1, last=r["at"])
+    return out
 
 
 def diagnosed_incidents(since: float) -> set[int]:
@@ -76,15 +76,16 @@ def diagnosed_incidents(since: float) -> set[int]:
     return ids
 
 
-def engaged_keys(conn: sqlite3.Connection, since: float) -> dict[str, list[str]]:
+def engaged_keys(since: float) -> dict[str, list[str]]:
     """key -> how Anze engaged with it in the window."""
     out: dict[str, list[str]] = {}
     diagnosed = diagnosed_incidents(since)
-    for iid, members, resolved_by, resolved_at in conn.execute(
-        "SELECT id, members, resolved_by, resolved_at FROM incidents WHERE last_seen_at >= ?", (since,)
-    ):
+    for inc in heimdall_incidents.recent(days=36500):
+        if (inc["last_seen_at"] or 0) < since:
+            continue
+        iid, resolved_by, resolved_at = inc["id"], inc["resolved_by"], inc["resolved_at"]
         try:
-            keys = json.loads(members or "[]")
+            keys = json.loads(inc["members"] or "[]")
         except json.JSONDecodeError:
             keys = []
         for key in keys:
@@ -137,10 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     since = time.time() - args.days * 86400
 
-    with sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30) as conn:
-        per_key = writes_per_key(conn, since)
-    with sqlite3.connect(f"file:{heimdall_store.DB_PATH}?mode=ro", uri=True, timeout=30) as sconn:
-        engaged = engaged_keys(sconn, since)
+    per_key = writes_per_key(since)
+    engaged = engaged_keys(since)
 
     total = sum(v["writes"] for v in per_key.values())
     recent = time.time() - STILL_DAYS * 86400
