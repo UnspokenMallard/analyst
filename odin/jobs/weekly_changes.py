@@ -1,7 +1,7 @@
 """Weekly "what changed" file: what opened, what closed, what is failing, and the
 trend numbers the other reports already compute. Read-only, file only.
 
-Sources, all local: Heimdall's `incidents` table, the `jobs` table in jarvis.db, and the
+Sources, all local: Heimdall's incidents and Jarvis's job records (both in Mimir), and the
 artifacts ~/.herald/state/asana-digest.json, ~/.budget/state/spend-by-model-effort.json and
 ~/.budget/state/usage/status.json. Nothing is recomputed here that another job already writes.
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import sys
 import time
 from datetime import datetime
@@ -22,8 +21,10 @@ from pathlib import Path
 from .. import store
 
 sys.path.insert(0, str(Path.home() / ".sentinel"))
-from heimdall import store as heimdall_store  # noqa: E402  incidents live in Heimdall's db
-DB = store.JARVIS / "jarvis.db"
+from heimdall import incidents as heimdall_incidents  # noqa: E402  incidents are Heimdall's Mimir records
+
+from .._mimir import records as mr  # noqa: E402
+
 REPORT_NAME = "weekly-changes"
 ARTIFACT = store.STATE / "weekly-changes.json"
 
@@ -35,26 +36,22 @@ def _json(path: Path) -> dict:
         return {}
 
 
-def incidents(conn: sqlite3.Connection, since: float) -> tuple[list, list, list]:
-    opened = conn.execute(
-        "SELECT kind, summary FROM incidents WHERE opened_at >= ? ORDER BY opened_at", (since,)
-    ).fetchall()
-    closed = conn.execute(
-        "SELECT kind, resolved_by, COUNT(*) FROM incidents WHERE resolved_at >= ? "
-        "GROUP BY kind, resolved_by ORDER BY kind", (since,)
-    ).fetchall()
-    still_open = conn.execute(
-        "SELECT id, kind, summary, datetime(opened_at, 'unixepoch', 'localtime') FROM incidents "
-        "WHERE resolved_at IS NULL ORDER BY opened_at"
-    ).fetchall()
-    return opened, closed, still_open
+def incidents(since: float) -> tuple[list, list, list]:
+    every = heimdall_incidents.recent(days=36500)  # all of them: closed ones count by when they closed
+    opened = [(i["kind"], i["summary"]) for i in sorted(every, key=lambda i: i["opened_at"]) if i["opened_at"] >= since]
+    closed: dict[tuple, int] = {}
+    for i in every:
+        if (i["resolved_at"] or 0) >= since:
+            closed[(i["kind"], i["resolved_by"])] = closed.get((i["kind"], i["resolved_by"]), 0) + 1
+    still_open = [(i["id"], i["kind"], i["summary"], datetime.fromtimestamp(i["opened_at"]).strftime("%Y-%m-%d %H:%M:%S"))
+                  for i in heimdall_incidents.open_incidents()]
+    return opened, [(k, by, n) for (k, by), n in sorted(closed.items(), key=lambda kv: (kv[0][0], kv[0][1] or ""))], still_open
 
 
-def failing_jobs(conn: sqlite3.Connection) -> list:
-    return conn.execute(
-        "SELECT name, substr(last_result, 1, 120) FROM jobs "
-        "WHERE enabled = 1 AND (last_result LIKE 'FAILED%' OR last_result LIKE 'DEFERRED%') ORDER BY name"
-    ).fetchall()
+def failing_jobs() -> list:
+    rows = mr.query(kind="jarvis.job", source="jarvis", limit=5000)
+    return sorted((r["key"], (r["data"].get("last_result") or "")[:120]) for r in rows
+                  if r["data"].get("enabled") and (r["data"].get("last_result") or "").startswith(("FAILED", "DEFERRED")))
 
 
 def render(now: datetime, days: int, opened, closed, still_open, failing, extras: list[str]) -> str:
@@ -85,10 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now().astimezone()
     since = time.time() - args.days * 86400
 
-    with sqlite3.connect(f"file:{heimdall_store.DB_PATH}?mode=ro", uri=True) as sconn:
-        opened, closed, still_open = incidents(sconn, since)
-    with sqlite3.connect(f"file:{DB}?mode=ro", uri=True) as conn:  # Jarvis's db: read only
-        failing = failing_jobs(conn)
+    opened, closed, still_open = incidents(since)
+    failing = failing_jobs()
 
     asana = _json(Path.home() / ".herald" / "state" / "asana-digest.json")  # Hermod's job (moved 2026-10-17)
     spend = _json(Path.home() / ".budget" / "state" / "spend-by-model-effort.json")
