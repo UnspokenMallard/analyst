@@ -91,7 +91,8 @@ def past_decisions() -> str:
     decided.sort(key=lambda d: d[0], reverse=True)
 
     def line(at, verdict, f):
-        why = f" - his reason: {f['dismissReason']}" if f.get("dismissReason") else ""
+        why = (f" - his reason: {f['dismissReason']}" if f.get("dismissReason")
+               else f" - effect after a week: {f['effect']}" if f.get("effect") else "")
         return f"- {at[:10]} {verdict}: [{f.get('project')}] {str(f.get('title'))[:140]}{why}"
     rejects = [line(*d) for d in decided if d[1] == "rejected"][:MAX_REJECTS]
     recent = [line(*d) for d in decided[:RECENT_DECISIONS] if d[1] == "accepted"]
