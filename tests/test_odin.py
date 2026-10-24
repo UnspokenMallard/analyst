@@ -10,6 +10,8 @@ from pathlib import Path
 TMP = Path(tempfile.mkdtemp(prefix="odin-test-"))
 os.environ["ODIN_HOME"] = str(TMP / "odin")
 os.environ["JARVIS_HOME"] = str(TMP / "jarvis")
+os.environ["MEMORY_DB"] = str(TMP / "memory.db")  # scratch Mimir: the jobs read the other parts' records
+os.environ["MIMIR_OUTBOX"] = str(TMP / "outbox")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from odin import cli, store  # noqa: E402
@@ -103,8 +105,50 @@ def test_jobs_start_no_mcp_servers():
           not seen.get("flags") and args.count("--strict-mcp-config") == 1, f"{seen.get('flags')} {args}")
 
 
+def test_jobs_read_mimir():
+    import time
+    from odin._mimir import records as mr
+    from odin.jobs import alert_review, job_review, weekly_changes
+    sys.path.insert(0, str(Path.home() / ".mind" / "mimir"))
+    import mem
+    mr.use_local(mem.connect(shared=True))
+    now = time.time()
+    def incident(i, kind, opened, resolved=None, by=None):
+        data = {"id": i, "kind": kind, "summary": f"s{i}", "severity": "warn", "opened_at": opened, "last_seen_at": opened,
+                "hits": 1, "members": json.dumps([f"{kind}:{i}"]), "member_count": 1, "resolved_at": resolved,
+                "resolved_by": by, "resolution": None, "evidence": None}
+        mr.put("heimdall", "heimdall.incident", str(i), {**data, **({} if resolved else {"open": True, "open_kind": kind})})
+    incident(1, "stuck-event", now - 3600, now - 60, "human")
+    incident(2, "loop-crash", now - 30 * 86400, now - 29 * 86400, "resolver")
+    incident(3, "stale", now - 120)
+    mr.put("jarvis", "jarvis.job", "bad", {"enabled": True, "last_result": "FAILED: x"})
+    mr.put("jarvis", "jarvis.job", "off", {"enabled": False, "last_result": "FAILED: y"})
+    opened, closed, still_open = weekly_changes.incidents(now - 7 * 86400)
+    check("weekly-changes: window, closed-by counts and open list come from the incident records",
+          [k for k, _ in opened] == ["stuck-event", "stale"] and closed == [("stuck-event", "human", 1)]
+          and [i[0] for i in still_open] == [3], f"{opened} {closed} {still_open}")
+    check("weekly-changes: only enabled jobs with a bad last result", weekly_changes.failing_jobs() == [("bad", "FAILED: x")])
+    for i in range(3):
+        mr.append("jarvis", "jarvis.alert_writes", {"key": "k:a", "severity": "warn"}, at=now - 100 * i)
+    got = alert_review.writes_per_key(now - 86400)
+    check("alert-review: writes grouped per key", got["k:a"]["writes"] == 3 and got["k:a"]["severity"] == "warn", str(got))
+    check("alert-review: the incident resolved by hand counts as engagement",
+          alert_review.engaged_keys(now - 86400).get("stuck-event:1") == ["resolved incident 1"])
+    mr.append("fafnir", "fafnir.job_call", {"job": "j", "cost_usd": 1.5}, at=now - 10)
+    mr.append("fafnir", "fafnir.job_call", {"job": "j", "cost_usd": None}, at=now - 20)
+    mr.append("fafnir", "fafnir.job_call", {"job": "other", "cost_usd": 7}, at=now - 30)
+    check("job-review: spend sums one job's recorded cost", job_review.spend("j", now - 86400) == 1.5)
+
+
 def test_cli():
     check("cli: an unknown job is refused with exit 2", cli.main(["nope"]) == 2)
+    from odin._mimir import records as mr
+    mr.use_local(None)
+    os.environ["MIMIR_URL"] = "none"
+    try:
+        check("cli: a job exits 2 when Mimir is unreachable", cli.main(["weekly-changes"]) == 2)
+    finally:
+        del os.environ["MIMIR_URL"]
 
 
 if __name__ == "__main__":
