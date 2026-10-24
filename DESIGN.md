@@ -90,7 +90,7 @@ No service and no `config.toml`: every job reads what it read before.
 | `hud-audit-nightly`, `-weekly` | `hud-audit nightly\|weekly` | `state/audits.json` | proposals |
 | `alert-review`, `answer-rules`, `job-review` | the job name | `state/<job>.json` | `state/reports/<job>/` + proposals |
 
-- Reports are `state/reports/<name>/<date>.md` plus `latest.md` (Mind's layout); job logs `state/logs/<job>.log`.
+- Reports are `state/reports/<name>/<date>.md` plus `latest.md` (Mimir's layout); job logs `state/logs/<job>.log`.
 - Readers repointed: Brokkr `store.REPORT` (the originator's input, `ODIN_HOME`-aware), the consultant prompt,
   `report-push-weekly`, Heimdall's config-drift `configs` keys, Heimdall's `log-signatures` (reads both log
   dirs), the week collector's job-session filter (both log dirs), the `update-brain` skill, the checkups text,

@@ -3,7 +3,7 @@
 Paths come from ODIN_HOME (default ~/.analyst) and JARVIS_HOME (default ~/.jarvis), so the tests and
 Jarvis's selftest point both at scratch before anything here is imported.
 
-Reports: state/reports/<name>/<date>.md plus latest.md (Mind's layout). Jarvis's report pushes, Brokkr and the
+Reports: state/reports/<name>/<date>.md plus latest.md (Mimir's layout). Jarvis's report pushes, Brokkr and the
 consultant digest read latest.md.
 Proposals: state/proposals.json, {"findings": [...]} in the shape the HUD reads. Odin never files them;
 Jarvis's proposals-watch does (~/.jarvis/scripts/proposals-watch.py).
