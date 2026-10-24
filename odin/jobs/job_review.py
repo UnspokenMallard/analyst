@@ -6,7 +6,7 @@ raised and how they ended (same rule as the HUD's Job value panel, hud/lib/jobva
 resolved, dismissed, or ignored (still open after IGNORED_DAYS). A job with at least
 MIN_DECIDED decided-or-ignored findings and acceptance below MAX_ACCEPT percent becomes one
 HUD finding on project claude-config proposing to pause or retune it. The finding id comes from
-the job name, so a dismissed one stays dismissed. The report is Analyst's state/reports/job-review/latest.md.
+the job name, so a dismissed one stays dismissed. The report is Odin's state/reports/job-review/latest.md.
 
 Read-only for the daemon's state: it edits no config and pauses nothing.
 Usage: analyst job-review [--days N] [--dry-run]
@@ -25,7 +25,7 @@ from pathlib import Path
 from .. import store
 
 JARVIS = store.JARVIS
-DB = Path.home() / ".budget" / "state" / "budget.db"  # job_calls, in Budget since 2026-10-17
+DB = Path.home() / ".budget" / "state" / "budget.db"  # job_calls, in Fafnir since 2026-10-17
 FINDINGS = store.FINDINGS  # read only: the outcomes of each job's filed findings
 REPORT_NAME = "job-review"
 ARTIFACT = store.STATE / "job-review.json"

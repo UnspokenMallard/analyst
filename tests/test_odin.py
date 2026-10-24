@@ -1,4 +1,4 @@
-"""Analyst's tests: scratch ANALYST_HOME and JARVIS_HOME, no model call. Run: ~/.analyst/.venv/bin/python tests/test_analyst.py"""
+"""Odin's tests: scratch ODIN_HOME and JARVIS_HOME, no model call. Run: ~/.analyst/.venv/bin/python tests/test_odin.py"""
 from __future__ import annotations
 
 import json
@@ -7,13 +7,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp(prefix="analyst-test-"))
-os.environ["ANALYST_HOME"] = str(TMP / "analyst")
+TMP = Path(tempfile.mkdtemp(prefix="odin-test-"))
+os.environ["ODIN_HOME"] = str(TMP / "odin")
 os.environ["JARVIS_HOME"] = str(TMP / "jarvis")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from analyst import cli, store  # noqa: E402
-from analyst.jobs import hud_audit, portfolio_advisor  # noqa: E402
+from odin import cli, store  # noqa: E402
+from odin.jobs import hud_audit, portfolio_advisor  # noqa: E402
 
 FAILED = []
 
@@ -89,16 +89,16 @@ def test_inputs_inlined_not_read():
 
 
 def test_jobs_start_no_mcp_servers():
-    from analyst import common
+    from odin import common
     seen = {}
-    real = common.gateway.run_agent
-    common.gateway.run_agent = lambda *a, **k: seen.update(k) or {"code": 0}
+    real = common.bifrost.run_agent
+    common.bifrost.run_agent = lambda *a, **k: seen.update(k) or {"code": 0}
     try:
         common.run_claude_job("p", TMP / "l.log", "j", "Read", 1.0)
     finally:
-        common.gateway.run_agent = real
-    # The flag lives in Gateway only: analyst passes none, and the command Gateway builds still carries it once.
-    args = common.gateway.agent.command("claude", "sonnet", "s1", "Read", None, 1.0)
+        common.bifrost.run_agent = real
+    # The flag lives in Bifrost only: analyst passes none, and the command Bifrost builds still carries it once.
+    args = common.bifrost.agent.command("claude", "sonnet", "s1", "Read", None, 1.0)
     check("jobs: claude starts with --strict-mcp-config",
           not seen.get("flags") and args.count("--strict-mcp-config") == 1, f"{seen.get('flags')} {args}")
 

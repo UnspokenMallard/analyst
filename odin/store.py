@@ -1,11 +1,11 @@
-"""Analyst's paths, reports and proposals.
+"""Odin's paths, reports and proposals.
 
-Paths come from ANALYST_HOME (default ~/.analyst) and JARVIS_HOME (default ~/.jarvis), so the tests and
+Paths come from ODIN_HOME (default ~/.analyst) and JARVIS_HOME (default ~/.jarvis), so the tests and
 Jarvis's selftest point both at scratch before anything here is imported.
 
-Reports: state/reports/<name>/<date>.md plus latest.md (Mind's layout). Jarvis's report pushes, Forge and the
+Reports: state/reports/<name>/<date>.md plus latest.md (Mind's layout). Jarvis's report pushes, Brokkr and the
 consultant digest read latest.md.
-Proposals: state/proposals.json, {"findings": [...]} in the shape the HUD reads. Analyst never files them;
+Proposals: state/proposals.json, {"findings": [...]} in the shape the HUD reads. Odin never files them;
 Jarvis's proposals-watch does (~/.jarvis/scripts/proposals-watch.py).
 """
 from __future__ import annotations
@@ -18,10 +18,10 @@ from datetime import date
 from pathlib import Path
 
 HOME = Path.home()
-CODE = Path(__file__).resolve().parents[1]  # the checkout holding the analyst package (cwd for `python -m`)
-ANALYST = Path(os.environ.get("ANALYST_HOME") or HOME / ".analyst")
+CODE = Path(__file__).resolve().parents[1]  # the checkout holding the odin package (cwd for `python -m`)
+ODIN = Path(os.environ.get("ODIN_HOME") or HOME / ".analyst")
 JARVIS = Path(os.environ.get("JARVIS_HOME") or HOME / ".jarvis")
-STATE = ANALYST / "state"
+STATE = ODIN / "state"
 LOGS = STATE / "logs"
 REPORTS = STATE / "reports"
 PROPOSALS = STATE / "proposals.json"

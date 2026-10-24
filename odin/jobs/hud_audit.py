@@ -1,4 +1,4 @@
-"""Code audits for the HUD (added 2026-10-11, ~/.jarvis/hud/PLAN.md; in Analyst since 2026-10-18).
+"""Code audits for the HUD (added 2026-10-11, ~/.jarvis/hud/PLAN.md; in Odin since 2026-10-18).
 
   analyst hud-audit nightly   each repo with commits since its last audited commit:
                              one Sonnet review of that diff (security first, then bugs)

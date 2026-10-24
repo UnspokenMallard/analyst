@@ -1,11 +1,11 @@
 """Weekly "what changed" file: what opened, what closed, what is failing, and the
 trend numbers the other reports already compute. Read-only, file only.
 
-Sources, all local: Sentinel's `incidents` table, the `jobs` table in jarvis.db, and the
+Sources, all local: Heimdall's `incidents` table, the `jobs` table in jarvis.db, and the
 artifacts ~/.herald/state/asana-digest.json, ~/.budget/state/spend-by-model-effort.json and
 ~/.budget/state/usage/status.json. Nothing is recomputed here that another job already writes.
 
-Output: state/reports/weekly-changes/<date>.md and latest.md (Analyst, 2026-10-18; it was
+Output: state/reports/weekly-changes/<date>.md and latest.md (Odin, 2026-10-18; it was
 ~/.jarvis/reports/weekly/), plus the artifact state/weekly-changes.json that the job asserts on.
 Usage: analyst weekly-changes [--days N]
 """
@@ -22,7 +22,7 @@ from pathlib import Path
 from .. import store
 
 sys.path.insert(0, str(Path.home() / ".sentinel"))
-from sentinel import store as sentinel_store  # noqa: E402  incidents live in Sentinel's db
+from heimdall import store as heimdall_store  # noqa: E402  incidents live in Heimdall's db
 DB = store.JARVIS / "jarvis.db"
 REPORT_NAME = "weekly-changes"
 ARTIFACT = store.STATE / "weekly-changes.json"
@@ -85,12 +85,12 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now().astimezone()
     since = time.time() - args.days * 86400
 
-    with sqlite3.connect(f"file:{sentinel_store.DB_PATH}?mode=ro", uri=True) as sconn:
+    with sqlite3.connect(f"file:{heimdall_store.DB_PATH}?mode=ro", uri=True) as sconn:
         opened, closed, still_open = incidents(sconn, since)
     with sqlite3.connect(f"file:{DB}?mode=ro", uri=True) as conn:  # Jarvis's db: read only
         failing = failing_jobs(conn)
 
-    asana = _json(Path.home() / ".herald" / "state" / "asana-digest.json")  # Herald's job (moved 2026-10-17)
+    asana = _json(Path.home() / ".herald" / "state" / "asana-digest.json")  # Hermod's job (moved 2026-10-17)
     spend = _json(Path.home() / ".budget" / "state" / "spend-by-model-effort.json")
     quota = (_json(Path.home() / ".budget" / "state" / "usage" / "status.json").get("claude") or {})
     extras = []

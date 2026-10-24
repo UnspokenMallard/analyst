@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         out.append(f"COULD NOT COLLECT: transcript dir(s) missing: {', '.join(missing)}")
     machine = set()
-    # The scheduled jobs log their session ids: Jarvis's in ~/.jarvis/logs, Analyst's in its state/logs.
+    # The scheduled jobs log their session ids: Jarvis's in ~/.jarvis/logs, Odin's in its state/logs.
     for lf in [*(store.JARVIS / "logs").glob("*.log"), *store.LOGS.glob("*.log")]:
         machine.update(m.lower() for m in re.findall(r"session ([0-9a-fA-F-]{36})",
                                                       lf.read_text(encoding="utf-8", errors="replace")))

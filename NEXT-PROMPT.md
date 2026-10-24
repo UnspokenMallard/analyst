@@ -46,7 +46,7 @@ covers these rows too. The rule stays: this component measures or knows; Jarvis 
 - **A37 (Phase 3)** weekly-activity on Haiku fails half its runs and was recorded OK despite exit 1.
 - **A38 (Phase 3)** The unmoved jobs: issue-triage to Forge, dep-rehearsal and commit-audit to
   Sentinel, token-report and usage-digest to Budget.
-- **A42 (Phase 4)** `analyst/common.py` (176 lines) duplicates `~/.jarvis/scripts/jobcommon.py`.
+- **A42 (Phase 4)** `odin/common.py` (176 lines) duplicates `~/.jarvis/scripts/jobcommon.py`.
 
 | When (earliest useful, not a deadline) | Step | Waits on |
 |---|---|---|
@@ -59,7 +59,7 @@ covers these rows too. The rule stays: this component measures or knows; Jarvis 
 > and that is not done; strike it through here and add the result to the top of `~/.jarvis/JOURNAL.md`. Rules: Analyst
 > never alerts, pings, posts or files; Jarvis triggers it and acts (proposals-watch files, weekly-activity-post posts).
 > Jarvis's job names stay. A moved job's readers are repointed in the same commit. Copy state, never delete a Jarvis
-> file or table without Anze's confirmation. Tests: `~/.analyst/.venv/bin/python ~/.analyst/tests/test_analyst.py`,
+> file or table without Anze's confirmation. Tests: `~/.analyst/.venv/bin/python ~/.analyst/tests/test_odin.py`,
 > Jarvis's selftest, the HUD tests and every component's tests, before and after. Restart only with
 > `~/.jarvis/restart.sh`. Stop and tell me if anything differs from what the design expects.
 

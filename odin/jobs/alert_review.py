@@ -12,8 +12,8 @@ writes and looks for any sign Anze engaged:
 A key with at least MIN_WRITES writes, none of these, and a write in the last
 STILL_DAYS days is noise (a key that went quiet was fixed, by whoever). Each noisy key
 becomes one HUD finding on project jarvis (id from the key, so a dismissed one
-stays dismissed, proposed to Jarvis in Analyst's state/proposals.json) proposing: fix the cause,
-postpone it, raise its cooldown, or retire the check. The report is Analyst's
+stays dismissed, proposed to Jarvis in Odin's state/proposals.json) proposing: fix the cause,
+postpone it, raise its cooldown, or retire the check. The report is Odin's
 state/reports/alert-review/latest.md.
 
 Read-only for the daemon's state: it changes no config and silences nothing.
@@ -40,7 +40,7 @@ POSTPONED = JARVIS / "state" / "postponed.json"
 REPORT_NAME = "alert-review"
 ARTIFACT = store.STATE / "alert-review.json"
 sys.path.insert(0, str(Path.home() / ".sentinel"))
-from sentinel import store as sentinel_store  # noqa: E402  incidents live in Sentinel's db
+from heimdall import store as heimdall_store  # noqa: E402  incidents live in Heimdall's db
 
 MIN_WRITES = 5
 STILL_DAYS = 3
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30) as conn:
         per_key = writes_per_key(conn, since)
-    with sqlite3.connect(f"file:{sentinel_store.DB_PATH}?mode=ro", uri=True, timeout=30) as sconn:
+    with sqlite3.connect(f"file:{heimdall_store.DB_PATH}?mode=ro", uri=True, timeout=30) as sconn:
         engaged = engaged_keys(sconn, since)
 
     total = sum(v["writes"] for v in per_key.values())

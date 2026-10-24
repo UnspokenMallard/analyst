@@ -1,4 +1,4 @@
-"""Shared plumbing for Analyst's model jobs, copied from Jarvis's scripts/jobcommon.py (2026-10-18).
+"""Shared plumbing for Odin's model jobs, copied from Jarvis's scripts/jobcommon.py (2026-10-18).
 
   job_lock()        the one nightly flock every `claude -p` job and Jarvis's brain calls share
                     (same file as jobcommon and daemon/core.py's NightlyJobLock). On timeout the
@@ -6,10 +6,10 @@
   wait_for_api()    DNS *and* a TCP connect to api.anthropic.com:443
   rule_path()       an absolute path in the `//abs/path` form Claude Code permission rules need (a
                     single leading `/` is relative to the settings file's project, not the filesystem).
-  job_budget()      Budget's job-budget gate, asked before each repository of a multi-repo job.
-  run_claude_job()  one tool-limited job session through Gateway's `run_agent`: dontAsk, an explicit
+  job_budget()      Fafnir's job-budget gate, asked before each repository of a multi-repo job.
+  run_claude_job()  one tool-limited job session through Bifrost's `run_agent`: dontAsk, an explicit
                     tool list, pre-approved rules, the per-run budget, the weekly ceiling, every
-                    attempt's cost in Budget's job_calls. The model is Gateway's (surface `job:<name>`).
+                    attempt's cost in Fafnir's job_calls. The model is Bifrost's (surface `job:<name>`).
   Job               the log and the artifact/receipt freshness assertions every job ends with.
 
 Verification is by artifact, never by exit code.
@@ -32,13 +32,13 @@ HOME = store.HOME
 JARVIS = store.JARVIS
 LOG_DIR = store.LOGS
 STATE_DIR = store.STATE
-BUDGET_CLI = HOME / ".budget" / "bin" / "budget"
+FAFNIR_CLI = HOME / ".budget" / "bin" / "budget"
 LOCK_PATH = HOME / ".claude-personal" / "state" / "nightly-job.lock"
 PYTHON = sys.executable
 
 sys.path.insert(0, str(HOME / ".budget"))
 sys.path.insert(0, str(HOME / ".gateway"))
-import gateway  # noqa: E402
+import bifrost  # noqa: E402
 
 
 def now_s() -> str:
@@ -140,7 +140,7 @@ def wait_for_api(log_file: Path, max_wait_min: int = 20, interval_s: int = 30,
 def job_budget(scope: str, optional: bool = False) -> tuple[int, str]:
     """(0, text) to go ahead, (1, text) when the account's budget is reached, anything else when it
     could not be checked."""
-    cmd = [str(BUDGET_CLI), "job-budget", f"--scope={scope}"] + (["--optional"] if optional else [])
+    cmd = [str(FAFNIR_CLI), "job-budget", f"--scope={scope}"] + (["--optional"] if optional else [])
     b = subprocess.run(cmd, capture_output=True, text=True)
     return b.returncode, (b.stdout + b.stderr).strip().replace("\n", " ")
 
@@ -157,7 +157,7 @@ def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budge
                    surface: str | None = None) -> int:
     """Exit code of the last attempt; the caller still asserts its artifact. `cwd` defaults to
     ~/.jarvis, where the jobs always ran (the Claude config and its permissions resolve from it)."""
-    out = gateway.run_agent(job_name, gateway.agent.stamp(prompt, "Odin (Analyst): weighty, ends with a verdict"), tools, allow, budget_usd, scope=scope,
+    out = bifrost.run_agent(job_name, bifrost.agent.stamp(prompt, "Odin (Analyst): weighty, ends with a verdict"), tools, allow, budget_usd, scope=scope,
                             cwd=cwd or JARVIS, optional=optional, log_file=log_file, surface=surface,
                             max_attempts=max_attempts, backoff_s=backoff_s)
     return int(out["code"]) if out["code"] is not None else 1

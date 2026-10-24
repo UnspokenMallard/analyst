@@ -13,7 +13,7 @@ from pathlib import Path
 J = Path.home() / ".jarvis"
 A = Path.home() / ".analyst" / "state"
 
-FILES = {  # Jarvis path -> Analyst path
+FILES = {  # Jarvis path -> Odin path
     J / "state" / "hud" / "audits.json": A / "audits.json",  # without it every repo is "first sight" and a night is skipped
     J / "state" / "alert-review.json": A / "alert-review.json",
     J / "state" / "answer-rules.json": A / "answer-rules.json",

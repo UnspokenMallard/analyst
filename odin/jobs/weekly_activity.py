@@ -1,9 +1,9 @@
-"""Monday weekly activity report: Analyst writes it, Jarvis posts it (split 2026-10-18).
+"""Monday weekly activity report: Odin writes it, Jarvis posts it (split 2026-10-18).
 
 collect_week_activity gathers the week read-only; one tool-limited `claude -p` turns it into the
 "Last week:" bullets in state/reports/week-activity/<date>.md (+ latest.md). Jarvis's
 weekly-activity-post (~/.jarvis/scripts/post-weekly-activity.py) puts that text into the Notes vault under
-Work/Daily Notes and adds it to the index. Analyst never posts.
+Work/Daily Notes and adds it to the index. Odin never posts.
 """
 from __future__ import annotations
 

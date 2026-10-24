@@ -5,8 +5,8 @@ read-only. The digest is split by scope and one tool-limited `claude -p` runs pe
 scope - work repos (under eventregistry/) under ~/.claude-work, the rest under
 ~/.claude-personal - each writing a report fragment; this script stores each fragment as
 the Living note "Portfolio Advisor Nightly Report - <scope>" in the memory store (`mem`,
-since 2026-10-13; it was a Notion page the model wrote) and merges them into state/reports/portfolio/latest.md (Analyst, 2026-10-18; it was
-~/.jarvis/portfolio-report.md). The report's layout is parsed by ~/.forge/forge/findings.py - do not
+since 2026-10-13; it was a Notion page the model wrote) and merges them into state/reports/portfolio/latest.md (Odin, 2026-10-18; it was
+~/.jarvis/portfolio-report.md). The report's layout is parsed by ~/.forge/brokkr/findings.py - do not
 change the headings without changing that parser.
 """
 from __future__ import annotations
@@ -110,7 +110,7 @@ def split_report(text: str) -> tuple[str, list[str], list[str], list[str]]:
 
 
 def merge_reports(fragments: dict[str, Path], failed: list[str]) -> str:
-    """One portfolio-report.md in the layout ~/.forge/forge/findings.py parses. Priorities are
+    """One portfolio-report.md in the layout ~/.forge/brokkr/findings.py parses. Priorities are
     renumbered across scopes, work first."""
     header, priorities, sections, quiet = "", [], [], []
     for scope in SCOPES:
