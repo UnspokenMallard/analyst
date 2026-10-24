@@ -23,7 +23,7 @@ First-night check, read-only:
   Traceback, no `is not a Claude surface`.
 - `ls -la ~/.analyst/state/reports/portfolio/`: a `2026-10-19.md` and `latest.md` from this morning; Forge's originate
   ran on it (`~/.jarvis/logs/jarvis.log`, `originate`), not "report is Nh old".
-- `sqlite3 ~/.budget/state/budget.db "SELECT datetime(ts,'unixepoch','localtime'), job, ok, model FROM job_calls WHERE ts > strftime('%s','2026-10-19')"`:
+- `mem sql "SELECT datetime(at,'unixepoch','localtime'), json_extract(data,'$.job'), json_extract(data,'$.ok'), json_extract(data,'$.model') FROM telemetry WHERE stream='fafnir.job_call' AND at > strftime('%s','2026-10-19')"` (Fafnir's job calls live in Mimir since 2026-10-24):
   `hud-audit-nightly`, `portfolio-advisor-*` with their usual models and `ok = 1`.
 - `~/.jarvis/state/proposals-file.json` (hourly) and `proposals-watch.json` (07:15): any audit finding proposed tonight (`~/.analyst/state/proposals.json`)
   is in `~/.jarvis/state/hud/findings.json` exactly once.
