@@ -47,6 +47,11 @@ def test_propose_new():
           first == ["a", "b"] and again == ["c"] and ids == ["a", "b", "c"], (first, again, ids))
 
 
+def test_hud_audit_private_note():
+    check("hud-audit: the private-repo rule is in the prompt for er-api and er-web only",
+          all("PRIVATE" in hud_audit.private_note(n) for n in ("er-api", "er-web")) and hud_audit.private_note("jarvis") == "")
+
+
 def test_hud_audit_proposals():
     store.FINDINGS.write_text(json.dumps({"findings": [
         {"id": hud_audit.finding_id("er-web", {"file": "package.json", "title": hud_audit.DEPS_TITLE}), "status": "open"}]}))
