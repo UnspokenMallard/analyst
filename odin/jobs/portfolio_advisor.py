@@ -70,7 +70,8 @@ def store_in_memory(scope: str, fragment: Path, job) -> None:
         args = [str(MEM), "update", found[0]["id"], "--content-file", str(fragment), "--summary", summary,
                 "--date", date.today().isoformat()]
     else:
-        args = [str(MEM), "add", "note", "--title", title, "--type", "project", "--scope", "general" if scope == "work" else "personal",
+        # --force: the per-scope reports share one summary template; the exact title is the dedupe
+        args = [str(MEM), "add", "note", "--force", "--title", title, "--type", "project", "--scope", "general" if scope == "work" else "personal",
                 "--summary", summary, "--content-file", str(fragment)]
     r = subprocess.run(args, capture_output=True, text=True)
     job.say(f"memory note {'updated' if found else 'created'}: {title}" if r.returncode == 0
