@@ -37,6 +37,7 @@ MAX_DIFF_BYTES = 150_000
 MAX_REPOS = {"nightly": 8, "weekly": 6}
 BUDGET_USD = {"nightly": 1.0, "weekly": 2.5}
 PRIVATE_REPOS = {"er-api", "er-web"}  # Anze 2026-10-25: private repos that may hold sensitive data
+SKIP_REPOS = {"yggdrasil", "yggdrasil-design-system"}  # Anze 2026-10-26: never audited; nightly cap kills yggdrasil-design-system every run
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 
 
@@ -55,7 +56,7 @@ def projects() -> list[tuple[str, Path]]:
             out += [(p.name, p) for p in sorted(root.iterdir()) if (p / ".git").is_dir()]
     if (jc.JARVIS / ".git").is_dir():
         out.append(("jarvis", jc.JARVIS))
-    return [(name, p) for name, p in out if notmine.is_mine(p)]
+    return [(name, p) for name, p in out if name not in SKIP_REPOS and notmine.is_mine(p)]
 
 
 def scope_of(repo: Path) -> str:
