@@ -248,6 +248,24 @@ class TestOdin(unittest.TestCase):
               after_one["failStreak"] == 1 and after_two["lastSha"] == g("rev-parse", "HEAD") and after_two["failStreak"] == 0,
               f"{after_one} {after_two}")
 
+    def test_weekly_activity_fails_on_nonzero_exit_with_fresh_file(self):
+        import contextlib
+        from unittest import mock
+        from odin import common
+        from odin.jobs import weekly_activity as wa
+        wa.DIGEST.parent.mkdir(parents=True, exist_ok=True)
+        wa.DIGEST.write_text("digest")
+        def run(code):
+            def fake(prompt, *a, **k):
+                (store.report_dir(wa.REPORT_NAME) / f"{wa.datetime.now():%Y-%m-%d}.md").write_text("Last week:\n- x\n")
+                return code
+            with mock.patch.object(wa.subprocess, "run"), mock.patch.object(common, "wait_for_api", return_value=True), \
+                 mock.patch.object(common, "job_lock", lambda *a: contextlib.nullcontext(True)), \
+                 mock.patch.object(common, "run_claude_job", fake):
+                return wa.main([])
+        self.check("weekly-activity: exit 1 with a fresh file is a failure", run(1) == 1)
+        self.check("weekly-activity: exit 0 with a fresh file passes", run(0) == 0)
+
 
 if __name__ == "__main__":
     unittest.main()

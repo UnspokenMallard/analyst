@@ -89,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
             prompt, job.log, "weekly-activity", budget_usd=1.00, tools="Read,Write,Edit", scope="work",
             allow=[f"Read({jc.rule_path(last)})", f"Read({jc.rule_path(out)})",
                    f"Write({jc.rule_path(out)})", f"Edit({jc.rule_path(out)})"])
+    if code != 0:  # a cut-off run can leave a fresh, half-written file
+        return job.fail(f"the model run exited {code}")
     if job.assert_artifact(out, code, what=f"week-activity/{out.name}") != 0:
         return 1
     text = out.read_text(encoding="utf-8")
