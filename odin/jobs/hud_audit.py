@@ -34,6 +34,8 @@ WORK_DIR = store.STATE / "audit-work"
 ROOTS = [jc.HOME / "code" / "eventregistry", jc.HOME / "code" / "personal"]
 WORK_ROOT = ROOTS[0]
 MAX_DIFF_BYTES = 150_000
+MAX_PROMPT_BYTES = 90_000  # ~25k tokens; every tool turn re-reads the prompt, so bigger ones hit the nightly $1 cap (audit F1)
+MAX_HEADER_BYTES = 10_000  # each of the commit list and the file stat
 MAX_REPOS = {"nightly": 8, "weekly": 6}
 BUDGET_USD = {"nightly": 1.0, "weekly": 2.5}
 PRIVATE_REPOS = {"er-api", "er-web"}  # Anze 2026-10-25: private repos that may hold sensitive data
@@ -115,10 +117,20 @@ def past_decisions() -> str:
             "for the same reason:\n" + "\n".join(rejects + recent) + "\n\n")
 
 
+def fit_diff(log: str, stat: str, diff: str, overhead: int) -> tuple[str, str, str]:
+    """(log, stat, diff) trimmed so the prompt stays under MAX_PROMPT_BYTES; the diff is cut at a file boundary."""
+    log, stat = log[:MAX_HEADER_BYTES], stat[:MAX_HEADER_BYTES]
+    room = min(MAX_DIFF_BYTES, max(10_000, MAX_PROMPT_BYTES - overhead - len(log) - len(stat)))
+    if len(diff) <= room:
+        return log, stat, diff
+    cut = diff.rfind("\ndiff --git", 0, room)
+    return log, stat, diff[:cut + 1 if cut > 0 else room]
+
+
 def nightly_prompt(name: str, repo: Path, rng: str, diff: Path, out: Path, truncated: bool) -> str:
     return f"""Code audit of new commits in {name} ({repo}), range {rng}.
 
-1. The commit list and the full diff of that range are in the <input> block below; they are already in your context, do NOT Read them again{' (cut at ' + str(MAX_DIFF_BYTES) + ' bytes; the file list at its top is complete)' if truncated else ''}.
+1. The commit list and the full diff of that range are in the <input> block below; they are already in your context, do NOT Read them again{' (cut to fit the per-run cost cap; the file list at its top is complete)' if truncated else ''}.
 2. Review the changes, security first: injection (SQL, shell, path, template), authentication and authorization gaps,
    secrets committed, unsafe deserialization, SSRF, XSS, missing input validation at trust boundaries, insecure defaults.
    Then correctness bugs the change introduces. Read, Grep and Glob inside {repo} to check context before reporting.
@@ -309,8 +321,11 @@ def audit(mode: str) -> int:
                 log = git(repo, "log", "--format=%h %an %ad %s", "--date=short", rng).stdout
                 stat = git(repo, "diff", "--stat", rng).stdout
                 diff = git(repo, "diff", rng).stdout
-                truncated = len(diff) > MAX_DIFF_BYTES
-                inp.write_text(f"# Commits {rng}\n{log}\n# Files\n{stat}\n# Diff\n{diff[:MAX_DIFF_BYTES]}", encoding="utf-8")
+                log, stat, fitted = fit_diff(log, stat, diff, len(FORMAT) + len(past_decisions()) + 3_000)
+                truncated = len(fitted) < len(diff)
+                if truncated:
+                    job.say(f"{name}: diff of {len(diff)} bytes cut to {len(fitted)} to fit the per-run cap")
+                inp.write_text(f"# Commits {rng}\n{log}\n# Files\n{stat}\n# Diff\n{fitted}", encoding="utf-8")
                 prompt = nightly_prompt(name, repo, rng, inp, out, truncated)
             else:
                 files = git(repo, "ls-files").stdout

@@ -286,6 +286,18 @@ class TestOdin(unittest.TestCase):
              mock.patch.object(hud_audit, "projects", side_effect=AssertionError("audit went on")):
             self.check("hud-audit: HUD_TASK_ID set stops before any work, exit 1", hud_audit.audit("nightly") == 1)
 
+    def test_audit_diff_is_sized_to_the_cap(self):
+        files = [f"diff --git a/f{i} b/f{i}\n" + "+x\n" * 5000 for i in range(20)]  # 20 files, ~20 KB each
+        diff = "".join(files)
+        log, stat, fitted = hud_audit.fit_diff("l" * 50_000, "s" * 50_000, diff, 5_000)
+        total = len(log) + len(stat) + len(fitted) + 5_000
+        self.check("hud-audit: headers are capped and the total stays under the prompt cap",
+                   len(log) == len(stat) == hud_audit.MAX_HEADER_BYTES and total <= hud_audit.MAX_PROMPT_BYTES, total)
+        self.check("hud-audit: a trimmed diff ends on a whole file", diff.startswith(fitted) and fitted.endswith("+x\n")
+                   and 0 < fitted.count("diff --git") < 20)
+        small = "diff --git a/a b/a\n+y\n"
+        self.check("hud-audit: a normal night is not trimmed", hud_audit.fit_diff("l", "s", small, 5_000) == ("l", "s", small))
+
 
 if __name__ == "__main__":
     unittest.main()
