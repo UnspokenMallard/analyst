@@ -266,6 +266,17 @@ class TestOdin(unittest.TestCase):
         self.check("weekly-activity: exit 1 with a fresh file is a failure", run(1) == 1)
         self.check("weekly-activity: exit 0 with a fresh file passes", run(0) == 0)
 
+    def test_failed_line_reaches_stdout(self):
+        import contextlib
+        import io
+        from odin import common
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            common.Job("fail-test", "t").fail("no digest produced")
+            common.log_line(TMP / "x.log", "ordinary line")
+        self.check("jobs: the FAILED line goes to stdout, other log lines do not",
+                   buf.getvalue() == "=== FAILED: no digest produced ===\n", buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

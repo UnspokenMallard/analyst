@@ -49,6 +49,8 @@ def log_line(log_file: Path, text: str) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "a", encoding="utf-8") as fh:
         fh.write(text.rstrip("\n") + "\n")
+    if text.startswith("=== FAILED:"):
+        print(text.rstrip("\n"), flush=True)  # Jarvis's failure alert quotes stdout; the log alone left it "<empty>"
 
 
 def rule_path(path: Path | str) -> str:
