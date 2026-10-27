@@ -39,6 +39,8 @@ BUDGET_USD = {"nightly": 1.0, "weekly": 2.5}
 PRIVATE_REPOS = {"er-api", "er-web"}  # Anze 2026-10-25: private repos that may hold sensitive data
 SKIP_REPOS = {"yggdrasil", "yggdrasil-design-system"}  # Anze 2026-10-26: never audited; nightly cap kills yggdrasil-design-system every run
 SEVERITIES = ("critical", "high", "medium", "low", "info")
+MAX_FAILS = 2  # a range that failed this many nightly runs in a row is skipped, so a cap that always binds stops paying
+NO_RETRY_EXIT = 86  # Jarvis's core.NO_RETRY_EXIT: the model was paid, so a retry pays again for the same failure
 
 
 def now_iso() -> str:
@@ -322,7 +324,14 @@ def audit(mode: str) -> int:
                     job.say(f"{name}: npm audit, {len(deps)} high/critical direct dependency advisory(ies)")
             if found is None:
                 failed.append(name)
+                st = state[name]
+                st["failStreak"] = st.get("failStreak", 0) + 1
+                if mode == "nightly" and st["failStreak"] >= MAX_FAILS:
+                    job.say(f"{name}: failed {st['failStreak']} runs in a row on {rng}; skipping it, next run starts at {head[:8]}")
+                    st["lastSha"], st["failStreak"] = head, 0
+                save(AUDITS, state)
                 continue
+            state[name].pop("failStreak", None)
             added = merge_findings(name, mode, found)
             total += added
             job.say(f"{name}: {len(found)} finding(s), {added} new")
@@ -330,10 +339,13 @@ def audit(mode: str) -> int:
                 state[name]["lastSha"] = head
             state[name][f"last{mode.title()}At"] = now_iso()
             save(AUDITS, state)
-    job.say(f"=== {'OK' if not failed else 'PARTIAL'}: {total} new finding(s)"
-            + (f"; failed: {', '.join(failed)}" if failed else "")
-            + (f"; deferred to the next run (budget): {', '.join(deferred)}" if deferred else "") + " ===")
-    return 1 if failed else 0
+    summary = (f"=== {'OK' if not failed else 'PARTIAL'}: {total} new finding(s)"
+               + (f"; failed: {', '.join(failed)} (no usable findings file, usually the ${BUDGET_USD[mode]:.2f} per-run cap; log {job.log})" if failed else "")
+               + (f"; deferred to the next run (budget): {', '.join(deferred)}" if deferred else "") + " ===")
+    job.say(summary)
+    if failed:
+        print(summary, flush=True)  # Jarvis's failure alert quotes stdout; the log alone left it "<empty>"
+    return NO_RETRY_EXIT if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:

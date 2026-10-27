@@ -225,6 +225,41 @@ def test_cli():
         del os.environ["MIMIR_URL"]
 
 
+def test_audit_failure_stops_paying():
+    import contextlib
+    import subprocess
+    from odin import common
+    repo = TMP / "failrepo"
+    repo.mkdir()
+    g = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True, check=True).stdout.strip()  # noqa: E731
+    g("init", "-q")
+    for i in range(3):
+        (repo / "f").write_text(str(i))
+        g("add", "f")
+        g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", f"c{i}")
+    saved = (hud_audit.projects, common.wait_for_api, common.job_budget, common.job_lock, hud_audit.run_model)
+    hud_audit.projects = lambda: [("failrepo", repo)]
+    common.wait_for_api = lambda log: True
+    common.job_budget = lambda scope, optional=False: (0, "")
+    common.job_lock = lambda name, log: contextlib.nullcontext(True)
+    hud_audit.run_model = lambda *a: None  # every run ends without a usable findings file
+    try:
+        state = json.loads(hud_audit.AUDITS.read_text()) if hud_audit.AUDITS.exists() else {}
+        state["failrepo"] = {"lastSha": g("rev-parse", "HEAD~2")}
+        hud_audit.AUDITS.parent.mkdir(parents=True, exist_ok=True)
+        hud_audit.AUDITS.write_text(json.dumps(state))
+        first = hud_audit.audit("nightly")
+        after_one = json.loads(hud_audit.AUDITS.read_text())["failrepo"]
+        second = hud_audit.audit("nightly")
+        after_two = json.loads(hud_audit.AUDITS.read_text())["failrepo"]
+    finally:
+        hud_audit.projects, common.wait_for_api, common.job_budget, common.job_lock, hud_audit.run_model = saved
+    check("hud-audit: a failed run exits 86 so Jarvis does not retry a paid run", first == second == 86, f"{first} {second}")
+    check("hud-audit: a range that failed twice is skipped",
+          after_one["failStreak"] == 1 and after_two["lastSha"] == g("rev-parse", "HEAD") and after_two["failStreak"] == 0,
+          f"{after_one} {after_two}")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
