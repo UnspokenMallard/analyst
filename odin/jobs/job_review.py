@@ -18,6 +18,11 @@ to a local branch proposal/job-review-<job> in ~/.jarvis, cut from master in a t
 the finding as a HUD proposal on that branch. It never pushes, merges or edits the live config; Accept in the
 HUD opens a chat on the branch. A branch that already exists is reused, so a rerun commits nothing new.
 
+Every job with a Fafnir job_call row, not only the ones above, is also checked for failures over the last
+FAIL_DAYS days (audit F5): 2 or more days with a failed run (`ok` = 0), or failed runs that cost at least
+MIN_WASTED_USD with no successful run in the window, becomes a HUD finding on claude-config (no config branch:
+a failing job needs a fix, not a pause).
+
 Read-only for the daemon's state: it edits no config and pauses nothing.
 Usage: analyst job-review [--days N] [--dry-run]
 """
@@ -48,6 +53,9 @@ MAX_ACCEPT = 10
 VIEWS = JARVIS / "state" / "hud" / "report-views.jsonl"
 READS_SINCE = datetime(2026, 10, 25, tzinfo=timezone.utc).timestamp()
 MIN_UNREAD_USD = 2.0
+FAIL_DAYS = 7
+MIN_FAIL_DAYS = 2
+MIN_WASTED_USD = 1.0
 
 
 def job_sources() -> dict[str, str]:
@@ -92,6 +100,41 @@ def all_spend(since: float) -> dict[str, float]:
     """Job -> Fafnir's recorded cost over the window, for every job that has one."""
     groups = mr.agg("sum", stream="fafnir.job_call", field="cost_usd", by="job", since=since, source="fafnir") or {}
     return {job: round(usd or 0, 2) for job, usd in groups.items()}
+
+
+def job_calls(since: float) -> list[dict]:
+    """Fafnir's job_call rows since `since`, each with `at`. shortcut: 5000 rows (days of calls), page it if that changes."""
+    return [{**r["data"], "at": r["at"]} for r in mr.query(stream="fafnir.job_call", since=since, limit=5000, source="fafnir")]
+
+
+def failing_jobs(rows: list[dict], held: set[str]) -> dict[str, dict]:
+    """Job -> {days, failed, ok, wasted_usd} for each unpaused job with failed runs on MIN_FAIL_DAYS+ days,
+    or failed runs worth MIN_WASTED_USD+ and no successful run. A run's retries count as one day's failure."""
+    per: dict[str, dict] = {}
+    for r in rows:
+        j = per.setdefault(r.get("job", ""), {"day_set": set(), "failed": 0, "ok": 0, "wasted_usd": 0.0})
+        if r.get("ok"):
+            j["ok"] += 1
+        else:
+            j["failed"] += 1
+            j["day_set"].add(datetime.fromtimestamp(r.get("at", 0), timezone.utc).date())
+            j["wasted_usd"] += r.get("cost_usd") or 0
+    out = {}
+    for job, j in per.items():
+        j["days"], j["wasted_usd"] = len(j.pop("day_set")), round(j["wasted_usd"], 2)
+        if job and job not in held and (j["days"] >= MIN_FAIL_DAYS or (j["wasted_usd"] >= MIN_WASTED_USD and not j["ok"])):
+            out[job] = j
+    return out
+
+
+def failing_finding(job: str, j: dict) -> dict:
+    f = finding_for(job, {"acceptance": 0, "raised": 0, "resolved": 0, "dismissed": 0, "ignored": 0}, j["wasted_usd"], FAIL_DAYS)
+    f.update(id="jobfail-" + hashlib.sha1(job.encode()).hexdigest()[:10], kind="job-failing", file="",
+             title=f"Job [{job}] failed on {j['days']} day(s) in the last {FAIL_DAYS} (${j['wasted_usd']} spent on failed runs).",
+             detail=f"{j['failed']} failed and {j['ok']} successful runs in Fafnir's job_call records. "
+                    "See ~/.analyst/state/reports/job-review/latest.md.",
+             suggestion="Read the job's log for why it fails; fix the cause or lengthen its cap. The job is not changed automatically.")
+    return f
 
 
 def unread_finding(job: str, report: str, usd: float, days: int) -> dict:
@@ -259,6 +302,11 @@ def main(argv: list[str] | None = None) -> int:
         if rep and covered and job not in held and not reads.get(rep) and spent[job] >= MIN_UNREAD_USD:
             flagged.append(unread_finding(job, rep, spent[job], args.days))
 
+    calls = job_calls(now - FAIL_DAYS * 86400)
+    failing = failing_jobs(calls, held)
+    flagged += [failing_finding(job, j) for job, j in sorted(failing.items())]
+    all_jobs = set(job_sources()) | set(spent) | {r.get("job") for r in calls}
+
     lines = [f"# Job review ({datetime.now():%Y-%m-%d})", "",
              f"Window {args.days} days. Flag: at least {MIN_DECIDED} decided-or-ignored findings and acceptance under {MAX_ACCEPT}%.", "",
              "| job | spend | raised | resolved | dismissed | ignored | acceptance |", "|---|---|---|---|---|---|---|"]
@@ -269,15 +317,18 @@ def main(argv: list[str] | None = None) -> int:
         lines.append(f"| {job} | ${usd} | {o['raised']} | {o['resolved']} | {o['dismissed']} | {o['ignored']} | {acc} |")
     lines += ["", "Every other LLM job with recorded spend:", "", "| job | spend | output |", "|---|---|---|"]
     lines += [f"| {job} | ${usd} | {signal} |" for job, usd, signal in others]
+    lines += ["", f"Failing jobs (failed runs on {MIN_FAIL_DAYS}+ of the last {FAIL_DAYS} days, or ${MIN_WASTED_USD} wasted with no success):", ""]
+    lines += [f"- {job}: failed on {j['days']} day(s), {j['failed']} failed / {j['ok']} ok runs, ${j['wasted_usd']} on failed runs"
+              for job, j in sorted(failing.items())] or ["- none"]
     print("\n".join(lines))
     added: list[str] = []
     if not args.dry_run:
         for i, f in enumerate(flagged):
-            if branch := propose_branch(f["job"]):
+            if f["kind"] != "job-failing" and (branch := propose_branch(f["job"])):
                 flagged[i] = as_proposal(f, f["job"], branch)
         added = write_findings(flagged)
         store.write_report(REPORT_NAME, "\n".join(lines) + "\n")
-        ARTIFACT.write_text(json.dumps({"at": now, "jobs": len(rows), "flagged": [f["id"] for f in flagged], "findings_added": added}) + "\n", encoding="utf-8")
+        ARTIFACT.write_text(json.dumps({"at": now, "jobs": len(all_jobs), "flagged": [f["id"] for f in flagged], "findings_added": added}) + "\n", encoding="utf-8")
     print(f"\nflagged: {len(flagged)}  findings added: {len(added)}")
     return 0
 

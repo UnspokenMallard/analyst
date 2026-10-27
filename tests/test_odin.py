@@ -298,6 +298,25 @@ class TestOdin(unittest.TestCase):
         small = "diff --git a/a b/a\n+y\n"
         self.check("hud-audit: a normal night is not trimmed", hud_audit.fit_diff("l", "s", small, 5_000) == ("l", "s", small))
 
+    def test_job_review_flags_failing_jobs(self):
+        from odin.jobs import job_review
+        day = 86400
+        t = job_review.parse_ts("2026-10-20T10:00:00Z")
+        rows = [{"job": "hud-audit-nightly", "ok": 0, "cost_usd": 0.4, "at": t},
+                {"job": "hud-audit-nightly", "ok": 0, "cost_usd": 0.4, "at": t + 60},  # a retry: same day
+                {"job": "hud-audit-nightly", "ok": 0, "cost_usd": 0.4, "at": t + 6 * day},
+                {"job": "once", "ok": 0, "cost_usd": 0.1, "at": t}, {"job": "once", "ok": 1, "cost_usd": 0.1, "at": t + day},
+                {"job": "costly", "ok": 0, "cost_usd": 1.5, "at": t},
+                {"job": "costly-but-works", "ok": 0, "cost_usd": 1.5, "at": t}, {"job": "costly-but-works", "ok": 1, "at": t + day},
+                {"job": "held", "ok": 0, "at": t}, {"job": "held", "ok": 0, "at": t + day}]
+        got = job_review.failing_jobs(rows, {"held"})
+        self.check("job-review: 2 failing days, or wasted cost with no success, flag a job; one day, retries, paused ones do not",
+                   set(got) == {"hud-audit-nightly", "costly"} and got["hud-audit-nightly"]["days"] == 2
+                   and got["hud-audit-nightly"]["failed"] == 3 and got["costly"]["wasted_usd"] == 1.5, got)
+        f = job_review.failing_finding("costly", got["costly"])
+        self.check("job-review: the failing-job finding is on claude-config with its own id", f["project"] == "claude-config"
+                   and f["kind"] == "job-failing" and f["id"].startswith("jobfail-"))
+
 
 if __name__ == "__main__":
     unittest.main()
