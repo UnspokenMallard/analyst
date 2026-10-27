@@ -258,6 +258,8 @@ def run_model(job: jc.Job, name: str, repo: Path, mode: str, prompt: str, inp: P
 
 def audit(mode: str) -> int:
     job = jc.Job(f"hud-audit-{mode}", f"HUD {mode} audit")
+    if os.environ.get("HUD_TASK_ID"):  # a task session's shell inherits it; the audit is for the scheduler, and pays
+        return job.fail("refusing to run the audit inside a HUD task session (HUD_TASK_ID is set); the scheduler runs it")
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     state = load(AUDITS, {})
     picked: list[tuple[str, Path, str, str]] = []

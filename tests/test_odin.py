@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp(prefix="odin-test-"))
@@ -21,6 +22,10 @@ from odin.jobs import hud_audit, portfolio_advisor  # noqa: E402
 
 class TestOdin(unittest.TestCase):
     def setUp(self):
+        patcher = mock.patch.dict(os.environ)  # a task session's shell has HUD_TASK_ID; the audit refuses it
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("HUD_TASK_ID", None)
         for f in (store.PROPOSALS, store.FINDINGS, hud_audit.AUDITS):  # scratch files; tests run in any order
             f.parent.mkdir(parents=True, exist_ok=True)
             f.unlink(missing_ok=True)
@@ -250,7 +255,6 @@ class TestOdin(unittest.TestCase):
 
     def test_weekly_activity_fails_on_nonzero_exit_with_fresh_file(self):
         import contextlib
-        from unittest import mock
         from odin import common
         from odin.jobs import weekly_activity as wa
         wa.DIGEST.parent.mkdir(parents=True, exist_ok=True)
@@ -276,6 +280,11 @@ class TestOdin(unittest.TestCase):
             common.log_line(TMP / "x.log", "ordinary line")
         self.check("jobs: the FAILED line goes to stdout, other log lines do not",
                    buf.getvalue() == "=== FAILED: no digest produced ===\n", buf.getvalue())
+
+    def test_audit_refused_in_hud_task_session(self):
+        with mock.patch.dict(os.environ, {"HUD_TASK_ID": "t1"}), \
+             mock.patch.object(hud_audit, "projects", side_effect=AssertionError("audit went on")):
+            self.check("hud-audit: HUD_TASK_ID set stops before any work, exit 1", hud_audit.audit("nightly") == 1)
 
 
 if __name__ == "__main__":
