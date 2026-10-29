@@ -311,9 +311,10 @@ def audit(mode: str) -> int:
             # A full LLM budget defers this repository (its lastSha stays, so the next run
             # covers the same commits); it is not a failure (2026-10-11).
             code, why = jc.job_budget(scope_of(repo), optional=True)
-            if code == 1:
+            limited = jc.limit_text(scope_of(repo))
+            if code == 1 or limited:
                 deferred.append(name)
-                job.say(f"{name}: deferred, the {scope_of(repo)} LLM budget is reached ({why})")
+                job.say(f"{name}: deferred, " + (limited or f"the {scope_of(repo)} LLM budget is reached ({why})"))
                 continue
             out = WORK_DIR / f"{name}.{mode}.findings.json"
             inp = WORK_DIR / f"{name}.{mode}.input.txt"
@@ -339,6 +340,10 @@ def audit(mode: str) -> int:
                 if deps is not None:
                     total += apply_deps(name, deps)
                     job.say(f"{name}: npm audit, {len(deps)} high/critical direct dependency advisory(ies)")
+            if found is None and jc.limit_text(scope_of(repo)):  # a usage limit, not a bad run: same commits next run, no failStreak
+                deferred.append(name)
+                job.say(f"{name}: deferred, {jc.limit_text(scope_of(repo))}")
+                continue
             if found is None:
                 failed.append(name)
                 st = state[name]
@@ -358,7 +363,7 @@ def audit(mode: str) -> int:
             save(AUDITS, state)
     summary = (f"=== {'OK' if not failed else 'PARTIAL'}: {total} new finding(s)"
                + (f"; failed: {', '.join(failed)} (no usable findings file, usually the ${BUDGET_USD[mode]:.2f} per-run cap; log {job.log})" if failed else "")
-               + (f"; deferred to the next run (budget): {', '.join(deferred)}" if deferred else "") + " ===")
+               + (f"; deferred to the next run (budget or usage limit): {', '.join(deferred)}" if deferred else "") + " ===")
     job.say(summary)
     if failed:
         print(summary, flush=True)  # Jarvis's failure alert quotes stdout; the log alone left it "<empty>"

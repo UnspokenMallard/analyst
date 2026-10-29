@@ -317,6 +317,13 @@ class TestOdin(unittest.TestCase):
         self.check("job-review: the failing-job finding is on claude-config with its own id", f["project"] == "claude-config"
                    and f["kind"] == "job-failing" and f["id"].startswith("jobfail-"))
 
+    def test_limit_window_defers_the_job_without_a_model_call(self):
+        from odin import common as jc
+        with mock.patch.object(jc.bifrost.agent.limits, "blocked", return_value=(True, 1893456000.0)), \
+             mock.patch.object(jc.bifrost, "run_agent") as run:
+            self.assertEqual(jc.run_claude_job("p", TMP / "x.log", "j", "Read", 1.0), 1)
+            run.assert_not_called()
+            self.assertIn("usage limit reached", jc.limit_text("personal"))
 
 if __name__ == "__main__":
     unittest.main()

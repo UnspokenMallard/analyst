@@ -153,15 +153,29 @@ def inline_input(text: str, label: str) -> str:
     return f"<input name=\"{label}\">\n{text}\n</input>"
 
 
+def limit_text(scope: str) -> str:
+    """Why the provider's usage-limit window blocks a run now, or '' when it does not."""
+    provider = bifrost.agent.claude.provider_of(scope)
+    blocked, until = bifrost.agent.limits.blocked(provider)
+    if not blocked:
+        return ""
+    return f"usage limit reached ({provider}), resets {datetime.fromtimestamp(until).astimezone():%Y-%m-%d %H:%M}"
+
+
 def run_claude_job(prompt: str, log_file: Path, job_name: str, tools: str, budget_usd: float,
                    allow: list[str] | None = None, max_attempts: int = 3, backoff_s: int = 120,
                    scope: str = "personal", cwd: Path | None = None, optional: bool = False,
                    surface: str | None = None) -> int:
     """Exit code of the last attempt; the caller still asserts its artifact. `cwd` defaults to
     ~/.jarvis, where the jobs always ran (the Claude config and its permissions resolve from it)."""
+    if limit_text(scope):  # inside a known limit window: spend nothing, let Jarvis defer the job
+        print(limit_text(scope), flush=True)
+        return 1
     out = bifrost.run_agent(job_name, bifrost.agent.stamp(prompt, "Odin (Analyst): weighty, ends with a verdict"), tools, allow, budget_usd, scope=scope,
                             cwd=cwd or JARVIS, optional=optional, log_file=log_file, surface=surface,
                             max_attempts=max_attempts, backoff_s=backoff_s)
+    if out.get("limit") is not None:  # Jarvis's script handler reads the stdout tail: a limit there is a defer, not a failure
+        print(limit_text(scope) or f"usage limit: {out['limit'].evidence}", flush=True)
     return int(out["code"]) if out["code"] is not None else 1
 
 
